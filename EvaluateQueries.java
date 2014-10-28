@@ -29,22 +29,22 @@ public class EvaluateQueries {
 		String medAnswerFile = "data/med_processed.rel";   // MED relevance judgements file
 		
 		String stopWordsDir = "data/stopwords/stopwords_indri.txt"; // stopwords directory
-				
+
 		int cacmNumResults = 100;
 		int medNumResults = 100;
 
 	    CharArraySet stopwords = new CharArraySet(0, false);
 //	    stopwords = StopAnalyzer.ENGLISH_STOP_WORDS_SET;
 	    
-		System.out.println(evaluate(cacmIndexDir, cacmDocsDir, cacmQueryFile,
-				cacmAnswerFile, cacmNumResults, stopwords));
-		System.out.println("\n");
-		System.out.println(evaluate(medIndexDir, medDocsDir, medQueryFile,
-				medAnswerFile, medNumResults, stopwords));
+//		System.out.println(evaluate(cacmIndexDir, cacmDocsDir, cacmQueryFile,
+//				cacmAnswerFile, cacmNumResults, stopwords));
+//		System.out.println("\n");
+//		System.out.println(evaluate(medIndexDir, medDocsDir, medQueryFile,
+//				medAnswerFile, medNumResults, stopwords));
 	    
-//	    MiniSearchEngine.setStopWords(stopWordsDir);
-//	    MiniSearchEngine cacm_se = new MiniSearchEngine(cacmDocsDir);
-//	    MiniSearchEngine med_se = new MiniSearchEngine(medDocsDir);
+	    MiniSearchEngine.setStopWords(stopWordsDir);
+	    MiniSearchEngine cacm_se = new MiniSearchEngine(cacmDocsDir, cacmIndexDir);
+	    MiniSearchEngine med_se = new MiniSearchEngine(medDocsDir, medIndexDir);
 	}
 
 	private static Map<Integer, String> loadQueries(String filename) {
