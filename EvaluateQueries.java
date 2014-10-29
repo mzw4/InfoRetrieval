@@ -42,9 +42,11 @@ public class EvaluateQueries {
 //		System.out.println(evaluate(medIndexDir, medDocsDir, medQueryFile,
 //				medAnswerFile, medNumResults, stopwords));
 	    
-	    MiniSearchEngine.setStopWords(stopWordsDir);
-	    MiniSearchEngine cacm_se = new MiniSearchEngine(cacmDocsDir, cacmIndexDir);
-	    MiniSearchEngine med_se = new MiniSearchEngine(medDocsDir, medIndexDir);
+	    MiniSearchEngine cacm_se = new MiniSearchEngine(cacmDocsDir, cacmIndexDir, stopWordsDir);
+	    cacm_se.evaluate(loadQueries(cacmQueryFile), loadAnswers(cacmAnswerFile), 100, "atn.atn");
+	    
+	    MiniSearchEngine med_se = new MiniSearchEngine(medDocsDir, medIndexDir, stopWordsDir);
+	    med_se.evaluate(loadQueries(medQueryFile), loadAnswers(medAnswerFile), 100, "atn.atn");
 	}
 
 	private static Map<Integer, String> loadQueries(String filename) {
@@ -118,7 +120,7 @@ public class EvaluateQueries {
 	/*
 	 * Perform Mean Average Precision evaluation
 	 */
-	private static double MAP(HashSet<String> answers,
+	public static double MAP(HashSet<String> answers,
 			List<String> results) {
 		double matches = 0;
 		double precision_sum = 0;
@@ -157,8 +159,8 @@ public class EvaluateQueries {
 			
 			System.out.printf("\nTopic %d  ", i);
 			System.out.println(results);
-			System.out.print(MAP(queryAnswers.get(i), results));
-			System.out.println();
+//			System.out.print(MAP(queryAnswers.get(i), results));
+//			System.out.println();
 		}
 
 		return sum / num_evaluated;
