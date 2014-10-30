@@ -26,13 +26,18 @@ import org.apache.lucene.analysis.util.CharArraySet;
 
 public class MiniSearchEngine {
 	private HashMap<String, HashMap<String, Double>> docIndex = new HashMap<>();
+	private HashMap<String, Double> docLengths = new HashMap<>();
+	private double avg_doc_length = 0;
+
 	private HashMap<String, Double> idfMap = new HashMap<>();
 	private HashMap<String, HashSet<String>> idfDocMap = new HashMap<>();
 	
-	private double avg_doc_length = 0;
-	
 	private HashSet<String> stopwordsSet = new HashSet<>();
-	private HashSet<String> possible_weightings = new HashSet<>(Arrays.asList("atc.atc", "atn.atn", "ann.bpn", "custom"));
+	private HashSet<String> possible_weightings = new HashSet<>(Arrays.asList("atc.atc", "atn.atn", "ann.bpn", "BM25"));
+	
+	private final double k1 = 1.2;
+	private final double k2 = 100;
+	private final double b = 0.75;
 	
 	public MiniSearchEngine(String docsPath, String indexDir, String stopDir) {
 		// Check whether docsPath is valid
@@ -111,7 +116,7 @@ public class MiniSearchEngine {
 					stream = new StopFilter(stream, new CharArraySet(stopwordsSet, true));
 					stream.reset();
 					
-					int num_tokens = 0;
+					double num_tokens = 0;
 					while(stream.incrementToken()) {
 						String token = stream.getAttribute(CharTermAttribute.class).toString().toLowerCase();
 						num_tokens++;
@@ -128,6 +133,7 @@ public class MiniSearchEngine {
 						}
 						idfDocMap.get(token).add(docName);
 					}
+					docLengths.put(docName, num_tokens);
 					avg_doc_length += num_tokens;
 					
 					stream.close();
@@ -191,6 +197,7 @@ public class MiniSearchEngine {
 					
 					// parse word,frequency tuples
 					String[] tupleTokens = docToken[1].split(";");
+					double docLength = 0;
 					for(String tuple: tupleTokens) {
 						String[] wordFreq = tuple.split(" ");
 						if(wordFreq.length < 2) continue;
@@ -199,8 +206,10 @@ public class MiniSearchEngine {
 						double freq = Double.parseDouble(wordFreq[1].trim());
 						tfMap.put(word, freq);
 						
-						avg_doc_length += freq;
+						docLength += freq;
 					}
+					docLengths.put(docName, docLength);
+					avg_doc_length += docLength;
 				}
 			}
 			avg_doc_length /= docIndex.size();
@@ -313,14 +322,21 @@ public class MiniSearchEngine {
 		//=========== Query calculations ===========
 		// create tf map for query
 		HashMap<String, Double> queryTfMap = countTokens(queryTokens);
-		// find max_tf
-		double query_max_tf = getMaxInMap(queryTfMap);
-
-		// calculate query weight vector
-		Vector queryVec = calculateTfIdfWeights(queryTfMap, idfMap,
-				simMeasure.split("[.]")[1], query_max_tf);
-		HashMap<String, Double> queryWeights = queryVec.getVector();
-		double query_norm = queryVec.getNorm();
+		
+		double query_max_tf = 0;
+		Vector queryVec = null;
+		HashMap<String, Double> queryWeights = null;
+		double query_norm = 0;
+		if(!simMeasure.equals("BM25")) {
+			// find max_tf
+			query_max_tf = getMaxInMap(queryTfMap);
+	
+			// calculate query weight vector
+			queryVec = calculateTfIdfWeights(queryTfMap, idfMap,
+					simMeasure.split("[.]")[1], query_max_tf);
+			queryWeights = queryVec.getVector();
+			query_norm = queryVec.getNorm();
+		}
 		// =====================================
 		
 		// compute doc scores using cosine similarity!
@@ -330,48 +346,74 @@ public class MiniSearchEngine {
 			
 			// get tf map
 			HashMap<String, Double> tfMap = docIndex.get(doc);
-			// find max_tf
-			double doc_max_tf = getMaxInMap(tfMap);
 			
-			// calculate document tf*idf's
-			double doc_norm = 0;			
-			for(String token: tfMap.keySet()) {
-				if(!idfMap.containsKey(token)) {
-					System.out.println("Token: " + token + " not found in idfMap.");
-					continue;
-				}
+			if(simMeasure.equals("BM25")) {
+				double a = docLengths.get(doc);
+				// We only have to loop over terms in the query, because all other terms would be 0 anyways
+				double K = k1 * ((1-b) + b * (docLengths.get(doc) / avg_doc_length));
+				for(String token: queryTfMap.keySet()) {
+					if(!idfMap.containsKey(token)) continue;	// no documents contain token, so term is 0
+					
+					double num_docs_containing = idfMap.get(token);
+					double score_term = Math.log(1.0 / ((num_docs_containing + 0.5) / (num_docs - num_docs_containing + 0.5)));
+					
+					double doc_freq = 0;
+					if(tfMap.containsKey(token)) {
+						doc_freq = tfMap.get(token);
+					}
+					score_term *= (((k1 + 1) * doc_freq) / (K + doc_freq));
 
-				double doc_tf = tfMap.get(token);
-				if(simMeasure.startsWith("a")) {
-					doc_tf = 0.5 + 0.5 * (doc_tf / doc_max_tf);
+					double query_freq = queryTfMap.get(token);
+					score_term *= (((k2 + 1) * query_freq) / (k2 + query_freq));
+					
+					simScore += score_term;
 				}
 				
-				double idf = idfMap.get(token);
-				if(simMeasure.startsWith("atc") || simMeasure.startsWith("atn")) {
-					idf = Math.log(num_docs / idf);
-				}
-				else if(simMeasure.startsWith("ann")) {
-					idf = 1;
-				}
-				
-				double tf_idf = doc_tf * idf;
-				doc_norm += Math.pow(tf_idf, 2);
-				
-				// increment score if query contains it, otherwise the term is just 0
-				if(queryWeights.containsKey(token)) {
-					simScore += tf_idf * queryWeights.get(token);
-				}
-			}
-
-			if(simMeasure.equals("atc.atc") && simScore != 0) {
-				// cosine normalization
-				doc_norm = Math.sqrt(doc_norm);
 			} else {
-				doc_norm = 1;
-				query_norm = 1;
+				// find max_tf
+				double doc_max_tf = getMaxInMap(tfMap);
+				
+				// calculate document tf*idf's
+				double doc_norm = 0;			
+				for(String token: tfMap.keySet()) {
+					if(!idfMap.containsKey(token)) {
+						System.out.println("Token: " + token + " not found in idfMap.");
+						continue;
+					}
+	
+					double doc_tf = tfMap.get(token);
+					if(simMeasure.startsWith("a")) {
+						doc_tf = 0.5 + 0.5 * (doc_tf / doc_max_tf);
+					}
+					
+					double idf = idfMap.get(token);
+					if(simMeasure.startsWith("atc") || simMeasure.startsWith("atn")) {
+						idf = Math.log(num_docs / idf);
+					}
+					else if(simMeasure.startsWith("ann")) {
+						idf = 1;
+					}
+					
+					double tf_idf = doc_tf * idf;
+					doc_norm += Math.pow(tf_idf, 2);
+					
+					// increment score if query contains it, otherwise the term is just 0
+					if(queryWeights.containsKey(token)) {
+						simScore += tf_idf * queryWeights.get(token);
+					}
+				}
+	
+				if(simMeasure.equals("atc.atc") && simScore != 0) {
+					// cosine normalization
+					doc_norm = Math.sqrt(doc_norm);
+				} else {
+					doc_norm = 1;
+					query_norm = 1;
+				}
+				simScore = simScore / (doc_norm * query_norm);
 			}
 
-			docScores.put(doc, simScore/(doc_norm * query_norm));
+			docScores.put(doc, simScore);
 		}
 		
 		// sort docs by scores
@@ -424,10 +466,10 @@ public class MiniSearchEngine {
 	
 	public double evaluate(Map<Integer, String> queries, Map<Integer, HashSet<String>> queryAnswers,
 			int numResults, String weighting) {
-//		if(possible_weightings.contains(weighting)) {
-//			System.out.println("Weighting does not exist. Defaulting to atc.atc");
-//			weighting = "atc.atc";
-//		}
+		if(!possible_weightings.contains(weighting)) {
+			System.out.println("Weighting does not exist. Defaulting to atc.atc");
+			weighting = "atc.atc";
+		}
 		
 		// Search and evaluate
 		double sum = 0;
@@ -439,8 +481,8 @@ public class MiniSearchEngine {
 			sum += EvaluateQueries.MAP(queryAnswers.get(i), results);
 			num_evaluated++;
 			
-			System.out.printf("\nTopic %d  ", i);
-			System.out.println(results);
+//			System.out.printf("\nTopic %d  ", i);
+//			System.out.println(results);
 //			System.out.println(queryAnswers.get(i));
 //			System.out.print(EvaluateQueries.MAP(queryAnswers.get(i), results));
 //			System.out.println();

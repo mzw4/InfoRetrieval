@@ -36,17 +36,41 @@ public class EvaluateQueries {
 	    CharArraySet stopwords = new CharArraySet(0, false);
 //	    stopwords = StopAnalyzer.ENGLISH_STOP_WORDS_SET;
 	    
-//		System.out.println(evaluate(cacmIndexDir, cacmDocsDir, cacmQueryFile,
-//				cacmAnswerFile, cacmNumResults, stopwords));
-//		System.out.println("\n");
-//		System.out.println(evaluate(medIndexDir, medDocsDir, medQueryFile,
-//				medAnswerFile, medNumResults, stopwords));
+	    System.out.println("Evaluating queries w/ Lucene...");
+		System.out.println(evaluate(cacmIndexDir, cacmDocsDir, cacmQueryFile,
+				cacmAnswerFile, cacmNumResults, stopwords));
+		System.out.println(evaluate(medIndexDir, medDocsDir, medQueryFile,
+				medAnswerFile, medNumResults, stopwords));
 	    
+		System.out.println("\nBuilding/loading MiniSearchEngine index...");
 	    MiniSearchEngine cacm_se = new MiniSearchEngine(cacmDocsDir, cacmIndexDir, stopWordsDir);
-	    cacm_se.evaluate(loadQueries(cacmQueryFile), loadAnswers(cacmAnswerFile), 100, "atn.atn");
-	    
 	    MiniSearchEngine med_se = new MiniSearchEngine(medDocsDir, medIndexDir, stopWordsDir);
-	    med_se.evaluate(loadQueries(medQueryFile), loadAnswers(medAnswerFile), 100, "atn.atn");
+
+	    Map<Integer, String> cacm_queries = loadQueries(cacmQueryFile);
+	    Map<Integer, HashSet<String>> cacm_answers = loadAnswers(cacmAnswerFile);
+
+	    Map<Integer, String> med_queries = loadQueries(medQueryFile);
+	    Map<Integer, HashSet<String>> med_answers = loadAnswers(medAnswerFile);
+
+		System.out.println("\nEvaluating queries w/ atc.atc similarity measure...");
+	    cacm_se.evaluate(cacm_queries, cacm_answers, 100, "atc.atc");
+	    med_se.evaluate(med_queries, med_answers, 100, "atc.atc");
+	    
+		System.out.println("\nEvaluating queries w/ atn.atn similarity measure...");
+	    cacm_se.evaluate(cacm_queries, cacm_answers, 100, "atn.atn");
+	    med_se.evaluate(med_queries, med_answers, 100, "atn.atn");
+	    
+		System.out.println("\nEvaluating queries w/ ann.bpn similarity measure...");
+	    cacm_se.evaluate(cacm_queries, cacm_answers, 100, "ann.bpn");
+	    med_se.evaluate(med_queries, med_answers, 100, "ann.bpn");
+	    
+//		System.out.println("\nEvaluating queries w/ custom similarity measure...");
+//	    cacm_se.evaluate(cacm_queries, cacm_answers, 100, "custom");
+//	    med_se.evaluate(med_queries, med_answers, 100, "custom");
+	    
+		System.out.println("\nEvaluating queries w/ BM25 similarity measure...");
+	    cacm_se.evaluate(cacm_queries, cacm_answers, 100, "BM25");
+	    med_se.evaluate(med_queries, med_answers, 100, "BM25");
 	}
 
 	private static Map<Integer, String> loadQueries(String filename) {
@@ -157,8 +181,8 @@ public class EvaluateQueries {
 			sum += MAP(queryAnswers.get(i), results);
 			num_evaluated++;
 			
-			System.out.printf("\nTopic %d  ", i);
-			System.out.println(results);
+//			System.out.printf("\nTopic %d  ", i);
+//			System.out.println(results);
 //			System.out.print(MAP(queryAnswers.get(i), results));
 //			System.out.println();
 		}
